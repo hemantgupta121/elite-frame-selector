@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Connect a tablet — Elite Frame Finder</title>
+<link rel="stylesheet" href="css/app.css">
+<style>
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin-top: 16px; }
+  .qr { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 16px; text-align: center; }
+  .qr svg { width: 220px; height: 220px; }
+  .url { font: 600 18px/1.3 ui-monospace, Consolas, monospace; word-break: break-all; margin-top: 8px; }
+  .steps { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+  .log { font: 12px/1.5 ui-monospace, Consolas, monospace; white-space: pre-wrap; background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 12px; max-height: 260px; overflow: auto; }
+</style>
+</head>
+<body>
+<header class="top"><img src="img/Elitelogo.svg" alt="Elite Optical Clinic" class="logo"><div class="title">Connect a tablet</div></header>
+<main>
+  <div class="steps">
+    <b>On the tablet:</b> open the camera app and point it at one of these codes, or type the address in Chrome.
+    Use the address that starts with <b>https://192.168</b> when the tablet is on the shop Wi-Fi: it gives the live camera preview.
+    Chrome will warn once about the certificate: tap <b>Advanced → Proceed</b>. The <b>http://</b> address also works but uses the photo button instead of a live preview.
+    Then in Chrome: menu → <b>Add to Home screen</b>.
+    <div id="ver" class="muted small" style="margin-top:8px"></div>
+  </div>
+  <div id="grid" class="grid"><div class="muted">Loading addresses…</div></div>
+  <h3 style="margin-top:24px">Devices reaching this server (last 100 requests)</h3>
+  <div id="log" class="log">…</div>
+</main>
+<script>
+  async function load() {
+    const list = await (await fetch('api/addresses')).json();
+    document.getElementById('grid').innerHTML = list.map((a) => '<div class="qr">' + a.svg + '<div class="url">' + a.url + '</div></div>').join('');
+    const d = await (await fetch('api/debug')).json();
+    document.getElementById('ver').textContent = 'Server version ' + d.version + ' · running since ' + new Date(d.started).toLocaleString('en-IN');
+    const byIp = {};
+    d.recent.forEach((r) => { byIp[r.ip] = byIp[r.ip] || { n: 0, last: r.t, ua: r.ua }; byIp[r.ip].n++; });
+    document.getElementById('log').textContent = Object.entries(byIp).map(([ip, v]) => ip + '  ' + v.n + ' requests, last ' + v.last.slice(11, 19) + '  ' + v.ua).join('\n') || 'No requests yet.';
+  }
+  load(); setInterval(load, 5000);
+</script>
+</body>
+</html>

@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#E1503A">
+<title>Elite Frame Finder</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="img/icon-192.png">
+<link rel="apple-touch-icon" href="img/icon-192.png">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<header class="top">
+  <img src="img/Elitelogo.svg" alt="Elite Optical Clinic" class="logo">
+  <div class="title">Frame Finder <span class="beta" id="verPill">prototype</span> <span id="netPill" class="net" title="Connection to the Frame Finder server">…</span></div>
+  <nav class="tabs" role="tablist">
+    <button class="tab active" data-tab="scan" role="tab">Scan</button>
+    <button class="tab" data-tab="frames" role="tab">Frames <span id="frameCount" class="pill">0</span></button>
+    <button class="tab" data-tab="customers" role="tab">Customers <span id="custCount" class="pill">0</span></button>
+    <button class="tab" data-tab="tag" role="tab">Tag frame</button>
+  </nav>
+</header>
+
+<main>
+<!-- ================= SCAN ================= -->
+<section id="panel-scan" class="panel active">
+  <div class="scan-grid">
+    <div class="stage-col">
+      <div id="stage" class="stage">
+        <video id="video" autoplay playsinline muted hidden></video>
+        <canvas id="photo" hidden></canvas>
+        <canvas id="overlay"></canvas>
+        <button id="btnFlip" class="flip" type="button" title="Flip camera" aria-label="Flip camera" hidden>
+          <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path fill="currentColor" d="M20 5h-3.2l-1.8-2H9L7.2 5H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2Zm0 14H4V7h4.1l1.8-2h4.2l1.8 2H20v12ZM12 9a4 4 0 0 0-3.9 3H6.5l2.5 3 2.5-3H10a2 2 0 0 1 3.7-1l1.4-1.4A4 4 0 0 0 12 9Zm3.5 1 -2.5 3h1.4a2 2 0 0 1-3.7 1l-1.4 1.4A4 4 0 0 0 15.9 14h1.6l-2-4Z"/></svg>
+        </button>
+        <div id="stageHint" class="stage-hint">
+          <div class="hint-face"></div>
+          <p>Ask the customer to look at the camera lens, face straight, hair off the forehead, glasses removed. Hold the tablet about 40–60 cm away.</p>
+        </div>
+      </div>
+      <div class="controls">
+        <button id="btnCamera" class="btn primary">Start camera</button>
+        <button id="btnCapture" class="btn primary" hidden>Scan face</button>
+        <label class="btn" id="lblPhoto">Take / choose photo
+          <input id="filePhoto" type="file" accept="image/*" capture="environment" hidden>
+        </label>
+        <button id="btnRetake" class="btn" hidden>New scan</button>
+      </div>
+      <p id="status" class="status">Loading…</p>
+      <p class="privacy">The photo is analysed on this device and is not saved or uploaded.</p>
+      <div class="card" id="custCard">
+        <div class="eyebrow">Customer record</div>
+        <form id="custForm" autocomplete="off" onsubmit="return false">
+          <div class="form-grid">
+            <label>Customer name *<input name="name" required placeholder="Full name"></label>
+            <label>Phone *<input name="phone" type="tel" inputmode="tel" placeholder="98xxxxxxxx"></label>
+            <label>Date of visit<input name="date" type="date"></label>
+            <label>Gender<select name="gender"><option value="">—</option><option>Male</option><option>Female</option><option>Other</option></select></label>
+            <label>Frame (looking for)<select name="frameWant"></select></label>
+            <label>Lens (looking for)<select name="lensWant"></select></label>
+            <label class="span-all">Notes<input name="notes" placeholder="Budget, brand preference, prescription notes…"></label>
+          </div>
+          <div class="mood-row">
+            <button id="btnMood" class="btn small-btn mood-btn" type="button" title="Tag how the customer was (staff only)">Mood</button>
+            <div id="moodChips" class="mood-chips" hidden></div>
+          </div>
+        </form>
+        <div class="row cust-actions">
+          <button id="btnCustSave" class="btn primary" type="button">Save</button>
+          <button id="btnCustDraft" class="btn" type="button">Save as Draft</button>
+          <button id="btnCustReset" class="btn" type="button">Reset</button>
+          <button id="btnCustPdf" class="btn" type="button">Print (PDF)</button>
+          <button id="btnCustPdfDetail" class="btn" type="button">Print Detail (PDF)</button>
+          <button id="btnCustWa" class="btn wa" type="button">WhatsApp details</button>
+        </div>
+        <p id="custMsg" class="status"></p>
+        <p class="muted small">Save stores the photo and details on this tablet (and on the Frame Finder server when reachable). Print (PDF) includes the photo; Print Detail (PDF) has details only. Both PDFs are stored with the record.</p>
+      </div>
+    </div>
+
+    <div id="results" class="results" hidden>
+      <div class="card shape-card">
+        <div class="shape-head">
+          <div>
+            <div class="eyebrow">Face shape</div>
+            <h2 id="shapeName">Oval</h2>
+            <div id="shapeConf" class="muted"></div>
+          </div>
+          <div class="measure-grid" id="measures"></div>
+        </div>
+        <div class="override">
+          <span class="muted">Is it right?</span>
+          <button id="btnConfirm" class="chip confirm" type="button">✓ Correct</button>
+          <div id="shapeChips" class="chips"></div>
+        </div>
+        <div id="learnInfo" class="muted small"></div>
+        <div class="ai-row">
+          <button id="btnAiShape" class="btn small-btn" type="button" hidden>Ask AI second opinion (cloud)</button>
+          <div id="aiShape" class="ai-box" hidden></div>
+        </div>
+        <p id="shapeSummary" class="summary"></p>
+        <ul id="warnings" class="warnings"></ul>
+        <div class="calib">
+          <span class="muted small">Checked with a PD ruler? Enter it to calibrate this tablet:</span>
+          <input id="calibPd" type="number" inputmode="decimal" min="45" max="80" step="0.5" placeholder="e.g. 64">
+          <button id="btnCalib" class="btn small-btn" type="button">Apply</button>
+          <span id="calibInfo" class="muted small"></span>
+          <button id="btnCalibReset" class="btn small-btn" type="button" hidden>Reset</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="eyebrow">Recommended frame</div>
+        <div class="rec-grid">
+          <div><div class="k">Shapes to choose</div><div id="recShapes" class="chips good"></div></div>
+          <div><div class="k">Shapes to avoid</div><div id="recAvoid" class="chips bad"></div></div>
+          <div><div class="k">Rim weight</div><div id="recWeight" class="v"></div></div>
+          <div><div class="k">Material</div><div id="recMaterial" class="v"></div></div>
+          <div><div class="k">Rim type</div><div id="recRims" class="v"></div></div>
+          <div><div class="k">Size</div><div id="recSize" class="v"></div></div>
+          <div class="span2"><div class="k">Colours</div><div id="recColours" class="chips"></div><div id="recColourNote" class="muted small"></div></div>
+          <div class="span2"><div class="k">Nose bridge</div><div id="recBridge" class="v small"></div></div>
+        </div>
+        <ul id="recTips" class="tips"></ul>
+      </div>
+
+      <div class="card">
+        <div class="row between">
+          <div class="eyebrow">Frames in stock that match</div>
+          <label class="small"><input type="checkbox" id="inStockOnly" checked> in stock only</label>
+        </div>
+        <div id="matches" class="matches"></div>
+      </div>
+
+      <div class="card" id="fitCard">
+        <div class="row between">
+          <div class="eyebrow">Frame on face: HBOX · VBOX · DBL · fitting height</div>
+          <button id="btnFit" class="btn small-btn" type="button">Measure frame</button>
+        </div>
+        <p class="muted small">Scan the customer <b>wearing the chosen frame</b>, tap Measure frame, then tap the lens edges on the photo (inside the rim): top-left and bottom-right of the customer's <b>right</b> lens (left side of the photo), then the same for the <b>left</b> lens. Use the arrows to nudge a tap by 1 pixel.</p>
+        <div id="fitTools" hidden>
+          <p id="fitStep" class="v"></p>
+          <div class="row">
+            <button id="fitUndo" class="btn small-btn" type="button">Undo point</button>
+            <span class="muted small">Nudge:</span>
+            <button class="btn small-btn nudge" type="button" data-dx="-1" data-dy="0" aria-label="left">←</button>
+            <button class="btn small-btn nudge" type="button" data-dx="1" data-dy="0" aria-label="right">→</button>
+            <button class="btn small-btn nudge" type="button" data-dx="0" data-dy="-1" aria-label="up">↑</button>
+            <button class="btn small-btn nudge" type="button" data-dx="0" data-dy="1" aria-label="down">↓</button>
+            <button id="fitCancel" class="btn small-btn" type="button">Close</button>
+          </div>
+        </div>
+        <div id="fitResult" hidden></div>
+      </div>
+
+      <div class="row">
+        <button id="btnShare" class="btn">Share summary on WhatsApp</button>
+        <button id="btnCopy" class="btn">Copy summary</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= FRAMES ================= -->
+<section id="panel-frames" class="panel">
+  <div class="toolbar">
+    <input id="search" type="search" placeholder="Search code, brand, model, colour…">
+    <button id="btnAdd" class="btn primary">Add frame</button>
+    <label class="btn">Import CSV<input id="fileCsv" type="file" accept=".csv,text/csv" hidden></label>
+    <button id="btnExport" class="btn">Export CSV</button>
+    <button id="btnTemplate" class="btn">CSV template</button>
+    <button id="btnReset" class="btn danger">Reset to sample</button>
+  </div>
+  <p class="muted small">Attributes are what the recommendation needs. Photos are optional. Use the same item <b>code</b> as the Elite inventory so the barcode matches at billing.</p>
+  <div id="frameList" class="frame-list"></div>
+</section>
+
+<!-- ================= CUSTOMERS ================= -->
+<section id="panel-customers" class="panel">
+  <div class="toolbar">
+    <input id="custSearch" type="search" placeholder="Search name, phone, date, face shape…">
+  </div>
+  <div id="custDetail" class="card" hidden></div>
+  <div id="custList" class="cust-list"></div>
+</section>
+
+<!-- ================= TAG ================= -->
+<section id="panel-tag" class="panel">
+  <div class="tag-grid">
+    <div>
+      <div class="eyebrow">Photograph a frame, let AI fill the attributes</div>
+      <p class="muted small">Place the frame on a plain background, front view, and take one photo. The AI reads shape, material, rim type, rim weight and colour. You check, add the code and price, and save. One photo per model, not per piece.</p>
+      <div class="controls">
+        <label class="btn primary">Take frame photo<input id="fileFrame" type="file" accept="image/*" capture="environment" hidden></label>
+        <button id="btnTag" class="btn" disabled>Tag with AI</button>
+      </div>
+      <p id="tagStatus" class="status"></p>
+      <img id="framePreview" class="preview" alt="" hidden>
+    </div>
+    <div id="tagResult" class="card" hidden>
+      <div class="eyebrow">AI reading</div>
+      <div id="tagFields" class="rec-grid"></div>
+      <p id="tagNotes" class="muted small"></p>
+      <button id="btnTagSave" class="btn primary">Review and save to Frames</button>
+    </div>
+  </div>
+</section>
+</main>
+
+<!-- edit dialog -->
+<dialog id="editDlg">
+  <form id="editForm" method="dialog">
+    <h3 id="editTitle">Add frame</h3>
+    <div class="form-grid">
+      <label>Code (barcode)<input name="code" required></label>
+      <label>Brand<input name="brand"></label>
+      <label>Model<input name="model"></label>
+      <label>Shape<select name="shape"></select></label>
+      <label>Material<select name="material"></select></label>
+      <label>Rim<select name="rim"></select></label>
+      <label>Rim weight<select name="weight"></select></label>
+      <label>Colour<input name="colour" placeholder="e.g. Black, Tortoise, Gold"></label>
+      <label>Colour family<select name="colour_family"></select></label>
+      <label>Eye (mm)<input name="eye" type="number" min="30" max="70"></label>
+      <label>Bridge (mm)<input name="bridge" type="number" min="10" max="30"></label>
+      <label>Temple (mm)<input name="temple" type="number" min="100" max="170"></label>
+      <label>Gender<select name="gender"></select></label>
+      <label>Price (₹)<input name="price" type="number" min="0"></label>
+      <label>Qty in stock<input name="qty" type="number" min="0"></label>
+      <label>Image URL (optional)<input name="image" placeholder="https://…"></label>
+    </div>
+    <div class="row end">
+      <button type="button" id="btnDelete" class="btn danger" hidden>Delete</button>
+      <button type="button" id="btnCancel" class="btn">Cancel</button>
+      <button type="submit" class="btn primary">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="js/faceshape.js"></script>
+<script src="js/catalog.js"></script>
+<script src="js/app.js"></script>
+<script src="vendor/jspdf.umd.min.js"></script>
+<script src="js/store.js"></script>
+<script src="js/customer.js"></script>
+</body>
+</html>

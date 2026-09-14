@@ -1,0 +1,20 @@
+{
+  "name": "elite-frame-finder",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Elite Optical Clinic - AI frame finder (face scan -> frame recommendation) PWA + optional Claude frame tagging",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/classifier.test.js",
+    "make-cert": "node tools/make-cert.js",
+    "icons": "node tools/make-icons.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "latest",
+    "qrcode": "^1.5.4"
+  }
+}
