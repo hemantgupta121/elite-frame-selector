@@ -569,7 +569,7 @@
   });
 
   // ---------------- AI tagging ----------------
-  const APP_VERSION = '2026-09-15.1'; // shown in the header so staff can tell which build the tablet is running
+  const APP_VERSION = '2026-09-15.2'; // shown in the header so staff can tell which build the tablet is running
   $('verPill').textContent = 'v' + APP_VERSION;
   function netStatus(ok, text) { const p = $('netPill'); p.textContent = text; p.className = 'net ' + (ok ? 'on' : 'off'); }
   fetch('api/health', { cache: 'no-store' }).then((r) => r.json()).then((h) => {
