@@ -1,5 +1,5 @@
 /* Elite Frame Finder service worker: app shell + model files cached so the tablet works offline after first load. */
-const VERSION = 'eff-v4';
+const VERSION = 'eff-v5';
 const SHELL = ['./', 'index.html', 'css/app.css', 'js/faceshape.js', 'js/catalog.js', 'js/app.js', 'js/store.js', 'js/customer.js', 'vendor/jspdf.umd.min.js', 'frames.json', 'manifest.webmanifest', 'img/Elitelogo.svg', 'img/icon-192.png', 'img/icon-512.png'];
 
 self.addEventListener('install', (e) => {

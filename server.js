@@ -16,7 +16,7 @@ loadEnv(path.join(__dirname, '.env'));
 if (!process.env.ANTHROPIC_API_KEY) loadEnv(path.join(__dirname, '..', 'Elite software', '.env'), ['ANTHROPIC_API_KEY']);
 
 const PORT = Number(process.env.PORT) || 4100;
-const APP_VERSION = '2026-09-14.4';
+const APP_VERSION = '2026-09-15.1';
 const STARTED = new Date().toISOString();
 const PUBLIC = path.join(__dirname, 'public');
 const MODEL = process.env.ANTHROPIC_TAG_MODEL || 'claude-opus-5';
@@ -224,25 +224,75 @@ const crypto = require('crypto');
 const AUTH_USER = process.env.APP_USER || 'elite';
 const AUTH_PASS = process.env.APP_PASSWORD || '';
 function same(a, b) { const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && crypto.timingSafeEqual(x, y); }
-function authorized(req) {
-  if (!AUTH_PASS) return true;
-  const h = req.headers.authorization || '';
-  if (!h.startsWith('Basic ')) return false;
-  const i = Buffer.from(h.slice(6), 'base64').toString('utf8').indexOf(':');
-  const creds = Buffer.from(h.slice(6), 'base64').toString('utf8');
-  if (i < 0) return false;
-  return same(creds.slice(0, i), AUTH_USER) && same(creds.slice(i + 1), AUTH_PASS);
+// Session cookie: "user|expiry|hmac", signed with SESSION_SECRET (or a key derived from the password), 90 days.
+const SESSION_DAYS = 90;
+const SESSION_KEY = process.env.SESSION_SECRET || crypto.createHash('sha256').update('eff|' + AUTH_USER + '|' + AUTH_PASS).digest('hex');
+const ON_RAILWAY = !!(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID || process.env.RAILWAY_SERVICE_ID);
+function sign(s) { return crypto.createHmac('sha256', SESSION_KEY).update(s).digest('base64url'); }
+function makeSession(user) { const body = user + '|' + (Date.now() + SESSION_DAYS * 86400000); return body + '|' + sign(body); }
+function sessionUser(req) {
+  const m = /(?:^|;\s*)eff_session=([^;]+)/.exec(req.headers.cookie || '');
+  if (!m) return null;
+  const parts = decodeURIComponent(m[1]).split('|');
+  if (parts.length !== 3) return null;
+  const body = parts[0] + '|' + parts[1];
+  if (!same(sign(body), parts[2])) return null;
+  if (Number(parts[1]) < Date.now()) return null;
+  return parts[0];
 }
+function basicUser(req) {
+  const h = req.headers.authorization || '';
+  if (!h.startsWith('Basic ')) return null;
+  const creds = Buffer.from(h.slice(6), 'base64').toString('utf8');
+  const i = creds.indexOf(':');
+  if (i < 0) return null;
+  return same(creds.slice(0, i), AUTH_USER) && same(creds.slice(i + 1), AUTH_PASS) ? AUTH_USER : null;
+}
+function authorized(req) { return !AUTH_PASS || !!sessionUser(req) || !!basicUser(req); }
+function cookieHeader(value, maxAge, req) {
+  const secure = req.headers['x-forwarded-proto'] === 'https' || (req.socket && req.socket.encrypted) ? '; Secure' : '';
+  return 'eff_session=' + encodeURIComponent(value) + '; Path=/; Max-Age=' + maxAge + '; HttpOnly; SameSite=Lax' + secure;
+}
+// Small brute-force brake: 8 wrong passwords per IP, then a 15-minute wait.
+const FAILS = new Map();
+function failCount(ip) { const f = FAILS.get(ip); if (!f || f.until < Date.now()) return 0; return f.n; }
+function noteFail(ip) { const f = FAILS.get(ip); const n = (f && f.until > Date.now() ? f.n : 0) + 1; FAILS.set(ip, { n, until: Date.now() + 15 * 60000 }); }
+// Pages that must load before sign-in.
+const PUBLIC_PATHS = /^\/(login\.html|css\/app\.css|img\/[^/]+|manifest\.webmanifest|favicon\.ico)$/;
 
 async function handle(req, res) {
   const url = new URL(req.url, 'http://x');
   logAccess(req);
-  if (!authorized(req)) {
-    res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="Elite Frame Finder", charset="UTF-8"', 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
-    return res.end('Elite Frame Finder: staff login required.');
-  }
+  const ip = (req.socket.remoteAddress || '').replace('::ffff:', '');
   try {
-    if (url.pathname === '/api/health') return send(res, 200, { ok: true, ai: !!process.env.ANTHROPIC_API_KEY, model: MODEL, version: APP_VERSION, urls: lanUrls() });
+    if (url.pathname === '/api/health') return send(res, 200, { ok: true, ai: !!process.env.ANTHROPIC_API_KEY, model: MODEL, version: APP_VERSION, auth: !!AUTH_PASS, urls: lanUrls() });
+    // On a public host, refuse to run until a password exists — otherwise customer records would be open to the internet.
+    if (ON_RAILWAY && !AUTH_PASS) {
+      res.writeHead(503, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      return res.end('<!doctype html><meta charset="utf-8"><title>Setup required</title><body style="font-family:system-ui;padding:40px;max-width:640px"><h2>Elite Frame Finder: setup required</h2><p>This copy is on a public address but no staff password is configured, so it stays closed.</p><p>In Railway open the <b>elite-frame-selector</b> service → <b>Variables</b> → add <code>APP_PASSWORD</code> (and optionally <code>APP_USER</code>, default <code>elite</code>), then redeploy.</p></body>');
+    }
+    if (url.pathname === '/api/login' && req.method === 'POST') {
+      if (!AUTH_PASS) return send(res, 200, { ok: true, note: 'no password configured on this server' });
+      if (failCount(ip) >= 8) return send(res, 429, { error: 'Too many attempts. Wait 15 minutes and try again.' });
+      const body = await readJson(req, 64 * 1024);
+      if (same(String(body.user || ''), AUTH_USER) && same(String(body.password || ''), AUTH_PASS)) {
+        FAILS.delete(ip);
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'Set-Cookie': cookieHeader(makeSession(AUTH_USER), SESSION_DAYS * 86400, req) });
+        return res.end(JSON.stringify({ ok: true, user: AUTH_USER }));
+      }
+      noteFail(ip);
+      return send(res, 401, { error: 'Wrong user name or password.' });
+    }
+    if (url.pathname === '/api/logout' && req.method === 'POST') {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'Set-Cookie': cookieHeader('', 0, req) });
+      return res.end('{"ok":true}');
+    }
+    if (!authorized(req) && !PUBLIC_PATHS.test(url.pathname)) {
+      if (url.pathname.startsWith('/api/')) return send(res, 401, { error: 'Sign in required.' });
+      res.writeHead(302, { Location: '/login.html?next=' + encodeURIComponent(url.pathname + url.search), 'Cache-Control': 'no-store' });
+      return res.end();
+    }
+    if (AUTH_PASS && url.pathname === '/login.html' && authorized(req)) { res.writeHead(302, { Location: '/' }); return res.end(); }
     if (url.pathname === '/api/debug') return send(res, 200, { version: APP_VERSION, urls: lanUrls(), started: STARTED, recent: RECENT.slice(-100).reverse() });
     if (url.pathname === '/api/addresses') {
       const QR = require('qrcode');

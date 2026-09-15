@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#E1503A">
+<title>Sign in — Elite Frame Finder</title>
+<link rel="icon" href="img/icon-192.png">
+<link rel="stylesheet" href="css/app.css">
+<style>
+  body { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  .login { width: min(420px, 92vw); background: #fff; border: 1px solid var(--line); border-radius: 18px; padding: 28px 24px; box-shadow: 0 20px 50px rgba(0,0,0,.08); }
+  .login .logo { height: 56px; display: block; margin: 0 auto 10px; }
+  .login h1 { font-size: 20px; text-align: center; margin: 0 0 4px; }
+  .login p { text-align: center; color: var(--muted); margin: 0 0 18px; font-size: 14px; }
+  .login label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin: 12px 0 4px; }
+  .login input { width: 100%; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; font-size: 16px; min-height: 48px; }
+  .login button { width: 100%; margin-top: 18px; }
+  .err { color: var(--bad); font-size: 14px; min-height: 1.4em; margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+<form class="login" id="f" autocomplete="on">
+  <img src="img/Elitelogo.svg" alt="Elite Optical Clinic" class="logo">
+  <h1>Frame Finder</h1>
+  <p>Staff sign in</p>
+  <label for="u">User name</label>
+  <input id="u" name="username" autocomplete="username" autocapitalize="none" value="elite" required>
+  <label for="p">Password</label>
+  <input id="p" name="password" type="password" autocomplete="current-password" required autofocus>
+  <button class="btn primary" type="submit">Sign in</button>
+  <div class="err" id="err"></div>
+</form>
+<script>
+  const f = document.getElementById('f'), err = document.getElementById('err');
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault(); err.textContent = '';
+    const btn = f.querySelector('button'); btn.disabled = true;
+    try {
+      const r = await fetch('api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user: f.username.value.trim(), password: f.password.value }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { err.textContent = d.error || 'Sign in failed.'; return; }
+      const next = new URLSearchParams(location.search).get('next');
+      location.replace(next && next.startsWith('/') && !next.startsWith('//') ? next : './');
+    } catch (e2) { err.textContent = 'Could not reach the server.'; }
+    finally { btn.disabled = false; }
+  });
+</script>
+</body>
+</html>

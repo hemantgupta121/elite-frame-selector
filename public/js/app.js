@@ -569,12 +569,13 @@
   });
 
   // ---------------- AI tagging ----------------
-  const APP_VERSION = '2026-09-14.4'; // shown in the header so staff can tell which build the tablet is running
+  const APP_VERSION = '2026-09-15.1'; // shown in the header so staff can tell which build the tablet is running
   $('verPill').textContent = 'v' + APP_VERSION;
   function netStatus(ok, text) { const p = $('netPill'); p.textContent = text; p.className = 'net ' + (ok ? 'on' : 'off'); }
   fetch('api/health', { cache: 'no-store' }).then((r) => r.json()).then((h) => {
     state.aiAvailable = !!h.ai;
     netStatus(true, 'server connected' + (h.version && h.version !== APP_VERSION ? ' · server v' + h.version + ', reload' : ''));
+    $('btnLogout').hidden = !h.auth;
     el.tagStatus.textContent = h.ai ? 'AI tagging ready (' + h.model + ').' : 'AI tagging is off: add ANTHROPIC_API_KEY to the server .env and restart.';
   }).catch(() => {
     netStatus(false, 'offline copy — server not reached');
@@ -634,6 +635,12 @@
     });
   }
   window.addEventListener('resize', () => { if (!state.result) clearOverlay(); });
+
+  $('btnLogout').addEventListener('click', async () => {
+    if (!confirm('Sign out of Frame Finder on this device?')) return;
+    try { await fetch('api/logout', { method: 'POST' }); } catch (e) { /* ignore */ }
+    location.href = 'login.html';
+  });
 
   // Small hook for customer.js (records, PDFs): read-only view of the current scan, plus a reset.
   window.EFF = {
