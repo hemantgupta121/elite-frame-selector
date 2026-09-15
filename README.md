@@ -33,6 +33,10 @@ To get the live preview on the tablet, either:
 2. In Railway: New Project → Deploy from GitHub repo → pick it. Railway reads `railway.json` and runs `node server.js`.
 3. Variables (Settings → Variables): `APP_PASSWORD` = a staff password (required on a public URL; user name is
    `elite` unless you set `APP_USER`), `DATA_DIR` = `/data/customers`, optionally `ANTHROPIC_API_KEY`.
+   Until `APP_PASSWORD` is set, the Railway copy shows a "setup required" page instead of the app, so customer
+   records are never exposed. With it set, staff get a sign-in page; the session is remembered for 90 days on
+   that device and there is a Sign out button in the header. Eight wrong passwords from one address block that
+   address for 15 minutes. On the shop LAN with no `APP_PASSWORD`, there is no sign-in.
 4. Add a Volume (right-click the service → Add Volume) mounted at `/data`, so customer records survive redeploys.
 5. Settings → Networking → Generate Domain. Open that `https://…railway.app` address on the tablet, enter the
    staff login once, then Add to Home screen. Live camera works because the address is HTTPS.
