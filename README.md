@@ -91,6 +91,14 @@ notes, and a mood chip (the same seven chips as the Elite software's Sale Invoic
 The **Customers** tab lists saved records with search; tap one to re-print, WhatsApp, open stored PDFs, edit in the
 Scan tab, or delete. Photos and PDFs stay on the tablet and the shop's own server; nothing goes to the cloud.
 
+**Quick photo (recommended for real per-frame pictures).** Tag frame tab → Start quick photo. On an Android tablet
+the back camera reads the barcode sticker live and shows the item name in green; place the frame in view, tap
+Snap, and the picture is attached to that item. Elsewhere type the code, then Snap. Tray photos taken with a
+camera are usually too blurred for barcode reading, so those go through Split tray with typed codes.
+
+Photos live with the catalog on the server you upload to: the Railway address for the tablets, or the PC's local
+copy under `data/` when uploaded on localhost. They are not merged between the two.
+
 ## AI frame tagging (optional)
 
 Copy `.env.example` to `.env`, add `ANTHROPIC_API_KEY`, restart. The **Tag frame** tab photographs a frame and
