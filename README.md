@@ -101,10 +101,21 @@ declined image is retried on a fallback model automatically.
 
 ## Frames catalog
 
-Frames are stored as **attributes** (no photos needed): code, brand, model, shape, material, rim, weight, colour,
-colour family, eye/bridge/temple, gender, price, qty. Use the Elite inventory item `code` so the barcode matches.
-Export/import CSV from the Frames tab (a template is provided). A schematic drawing is generated from the
-attributes so the sales screen never looks empty. `image` (URL) is optional.
+The catalog is shared by every tablet: it lives on the server (`<DATA_ROOT>/frames.json`, i.e. the Railway volume)
+with an offline copy on each tablet. Frames are **attributes**: code, brand, model, category, shape, material, rim,
+weight, colour, colour family, eye/bridge/temple, gender, price, qty, photo.
+
+**Fill it from the Elite inventory.** `node tools/export-elite-frames.js` reads the Elite software's SQLite and
+writes `elite-frames.csv` (Frame + Sunglass items with stock and price; shape/material/rim/colour/size/gender are
+guessed from the item name, e.g. "ARMANI BRW FULL FR SHEET 52"). Import it with **Import CSV** in the Frames tab.
+The Elite app's Item Stock Summary CSV also imports directly. Re-importing refreshes price and stock but keeps
+attributes and photos you set by hand. Items whose name gives no shape show "shape?" and do not count as a shape
+match until staff set it.
+
+**Photos.** Frames tab → **Upload frame photos** (many at once; resized before upload, stored as
+`frame-photos/<code>.jpg`). A file named by item code (e.g. `011158.jpg`) attaches automatically. Otherwise a
+matching panel opens: type or pick the code. For a photo of a whole **display tray**, tap **Split tray**, tap the
+tray's four corners, set columns × rows (3 × 4 by default) and the app cuts one picture per frame to assign.
 
 ## Updating the app on tablets
 
