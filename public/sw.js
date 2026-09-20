@@ -2,7 +2,7 @@
  * Two caches: the app shell (versioned; replaced on every release) and the face-model files (kept across
  * releases, ~6 MB, so a tablet can still scan offline right after an update). Own files are network-first.
  */
-const VERSION = 'eff-shell-v6';
+const VERSION = 'eff-shell-v7';
 const MODELS = 'eff-models-v1';
 const SHELL = ['./', 'index.html', 'css/app.css', 'js/faceshape.js', 'js/catalog.js', 'js/app.js', 'js/store.js', 'js/customer.js', 'vendor/jspdf.umd.min.js', 'frames.json', 'manifest.webmanifest', 'img/Elitelogo.svg', 'img/icon-192.png', 'img/icon-512.png'];
 const MP = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1';

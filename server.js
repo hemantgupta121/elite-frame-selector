@@ -16,7 +16,7 @@ loadEnv(path.join(__dirname, '.env'));
 if (!process.env.ANTHROPIC_API_KEY) loadEnv(path.join(__dirname, '..', 'Elite software', '.env'), ['ANTHROPIC_API_KEY']);
 
 const PORT = Number(process.env.PORT) || 4100;
-const APP_VERSION = '2026-09-15.2';
+const APP_VERSION = '2026-09-21.1';
 const STARTED = new Date().toISOString();
 const PUBLIC = path.join(__dirname, 'public');
 const MODEL = process.env.ANTHROPIC_TAG_MODEL || 'claude-opus-5';
@@ -148,6 +148,11 @@ async function faceShapeOpinion(dataUrl) {
 // ---------- customer records on disk: data/customers/<id>.json + <id>.jpg + <id>-full.pdf / <id>-detail.pdf ----------
 // DATA_DIR lets a host mount a persistent volume (Railway: mount a Volume at /data and set DATA_DIR=/data/customers).
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data', 'customers');
+const DATA_ROOT = path.dirname(DATA_DIR);                 // /data on Railway, ./data locally
+const FRAMES_FILE = path.join(DATA_ROOT, 'frames.json');  // shared frame catalog
+const PHOTOS_DIR = path.join(DATA_ROOT, 'frame-photos');  // one JPEG per item code
+function readFrames() { try { return fs.existsSync(FRAMES_FILE) ? JSON.parse(fs.readFileSync(FRAMES_FILE, 'utf8')) : []; } catch (e) { return []; } }
+function writeFrames(list) { fs.mkdirSync(DATA_ROOT, { recursive: true }); const tmp = FRAMES_FILE + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(list)); fs.renameSync(tmp, FRAMES_FILE); }
 function safeId(id) { return /^[A-Za-z0-9_-]{1,40}$/.test(String(id || '')) ? String(id) : null; }
 function writeDataUrl(file, dataUrl, expectPrefix) {
   // jsPDF emits "data:application/pdf;filename=generated.pdf;base64,..." — allow extra parameters before base64.
@@ -307,6 +312,28 @@ async function handle(req, res) {
     if (url.pathname === '/api/faceshape' && req.method === 'POST') {
       const body = await readJson(req, 8 * 1024 * 1024);
       return send(res, 200, await faceShapeOpinion(body.image));
+    }
+    // Frame catalog shared by every tablet (attributes + photo URLs), stored next to the customer records.
+    if (url.pathname === '/api/frames' && req.method === 'GET') return send(res, 200, readFrames());
+    if (url.pathname === '/api/frames' && req.method === 'PUT') {
+      const list = await readJson(req, 30 * 1024 * 1024);
+      if (!Array.isArray(list) || list.length > 20000) throw Object.assign(new Error('Send a JSON array of frames.'), { status: 400 });
+      writeFrames(list);
+      return send(res, 200, { ok: true, count: list.length });
+    }
+    if (url.pathname === '/api/frames/photo' && req.method === 'POST') {
+      const body = await readJson(req, 12 * 1024 * 1024);
+      const code = String(body.code || '').trim();
+      if (!/^[A-Za-z0-9_.-]{1,40}$/.test(code)) throw Object.assign(new Error('Bad item code.'), { status: 400 });
+      fs.mkdirSync(PHOTOS_DIR, { recursive: true });
+      if (!writeDataUrl(path.join(PHOTOS_DIR, code + '.jpg'), body.image, 'image/')) throw Object.assign(new Error('Send a JPEG data URL in "image".'), { status: 400 });
+      return send(res, 200, { ok: true, url: 'frame-photos/' + encodeURIComponent(code) + '.jpg?v=' + Date.now() });
+    }
+    if (url.pathname.startsWith('/frame-photos/') && req.method === 'GET') {
+      const file = path.normalize(path.join(PHOTOS_DIR, decodeURIComponent(url.pathname.slice('/frame-photos/'.length))));
+      if (!file.startsWith(PHOTOS_DIR) || !fs.existsSync(file)) return send(res, 404, 'Not found', 'text/plain');
+      res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=86400' });
+      return fs.createReadStream(file).pipe(res);
     }
     // Customer records: a copy of what the tablet stores, written as files the office PC can open.
     if (url.pathname === '/api/customers' && req.method === 'POST') {

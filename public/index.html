@@ -171,9 +171,17 @@
     <label class="btn">Import CSV<input id="fileCsv" type="file" accept=".csv,text/csv" hidden></label>
     <button id="btnExport" class="btn">Export CSV</button>
     <button id="btnTemplate" class="btn">CSV template</button>
-    <button id="btnReset" class="btn danger">Reset to sample</button>
+    <label class="btn primary">Upload frame photos<input id="filePhotos" type="file" accept="image/*" multiple hidden></label>
+    <button id="btnReset" class="btn danger">Clear all frames</button>
   </div>
   <p class="muted small">Attributes are what the recommendation needs. Photos are optional. Use the same item <b>code</b> as the Elite inventory so the barcode matches at billing.</p>
+  <div id="photoAssign" class="card" hidden>
+    <div class="row between"><div class="eyebrow">Match photos to frames</div><button id="assignClose" class="btn small-btn" type="button">Close</button></div>
+    <p class="muted small">Photos whose file name is an item code were attached automatically. For the rest, type or pick the item code (the list searches by code and name), then Save. Photos are resized before upload.</p>
+    <datalist id="codeList"></datalist>
+    <div id="assignRows"></div>
+    <div class="row"><button id="assignAll" class="btn primary" type="button">Save all matched</button><span id="assignMsg" class="muted small"></span></div>
+  </div>
   <div id="frameList" class="frame-list"></div>
 </section>
 
@@ -209,6 +217,22 @@
 </section>
 </main>
 
+<!-- tray split dialog -->
+<dialog id="trayDlg">
+  <h3>Split a tray photo into frames</h3>
+  <p class="muted small" id="trayHint">Tap the four corners of the tray in order: top-left, top-right, bottom-right, bottom-left.</p>
+  <div class="row">
+    <label class="small">Columns <input id="trayCols" type="number" min="1" max="8" value="3" style="width:64px"></label>
+    <label class="small">Rows <input id="trayRows" type="number" min="1" max="8" value="4" style="width:64px"></label>
+    <button id="trayUndo" class="btn small-btn" type="button">Undo corner</button>
+  </div>
+  <div class="tray-stage"><canvas id="trayCanvas"></canvas></div>
+  <div class="row end">
+    <button id="trayCancel" class="btn" type="button">Cancel</button>
+    <button id="traySplit" class="btn primary" type="button" disabled>Split into frames</button>
+  </div>
+</dialog>
+
 <!-- edit dialog -->
 <dialog id="editDlg">
   <form id="editForm" method="dialog">
@@ -217,6 +241,7 @@
       <label>Code (barcode)<input name="code" required></label>
       <label>Brand<input name="brand"></label>
       <label>Model<input name="model"></label>
+      <label>Category<select name="category"></select></label>
       <label>Shape<select name="shape"></select></label>
       <label>Material<select name="material"></select></label>
       <label>Rim<select name="rim"></select></label>

@@ -524,7 +524,7 @@
       const d = document.createElement('div'); d.className = 'frame';
       d.innerHTML = '<div class="pic">' + (f.image ? '<img src="' + esc(f.image) + '" alt="">' : Catalog.svg(f, 100)) + '</div>' +
         '<div><div class="name">' + esc(f.brand) + ' ' + esc(f.model) + '</div>' +
-        '<div class="meta">' + esc(f.code) + ' · ' + esc(f.shape) + ' · ' + esc(f.material) + ' · ' + esc(f.rim) + ' · ' + esc(f.weight) + '</div>' +
+        '<div class="meta">' + esc(f.code) + ' · ' + (f.shape ? esc(f.shape) : '<span class="oos">shape?</span>') + ' · ' + esc(f.material) + ' · ' + esc(f.rim) + ' · ' + esc(f.weight) + '</div>' +
         '<div class="meta">' + esc(f.colour) + (f.eye ? ' · ' + f.eye + '-' + f.bridge + '-' + f.temple : '') + ' · ' + (f.price ? '₹' + f.price : '') + (Number(f.qty) > 0 ? ' · qty ' + f.qty : ' · <span class="oos">out of stock</span>') + '</div></div>';
       d.addEventListener('click', () => openEdit(f));
       el.frameList.appendChild(d);
@@ -536,10 +536,137 @@
   el.btnTemplate.addEventListener('click', () => download('elite-frames-template.csv', Catalog.FIELDS.join(',') + '\nFR1001,Ray-Ban,RB5228,Rectangle,Sheet,Full,Broad,Black,Neutral,53,17,140,Unisex,6990,2,\n', 'text/csv'));
   el.fileCsv.addEventListener('change', async () => {
     const f = el.fileCsv.files && el.fileCsv.files[0]; if (!f) return;
-    const n = Catalog.importCSV(await f.text()); el.fileCsv.value = '';
-    alert(n + ' frames imported / updated.'); renderFrames();
+    const r = Catalog.importCSV(await f.text()); el.fileCsv.value = '';
+    alert(r.imported + ' frames imported / updated' + (r.skipped ? ', ' + r.skipped + ' non-frame items skipped' : '') + '.'); renderFrames();
   });
-  el.btnReset.addEventListener('click', async () => { if (confirm('Replace the catalog with the sample list?')) { await Catalog.reset(SEED_URL); renderFrames(); } });
+  el.btnReset.addEventListener('click', async () => { if (confirm('Delete ALL frames from the catalog on every tablet? Photos stay on the server.')) { await Catalog.reset(); renderFrames(); } });
+
+  // ---------------- frame photo upload ----------------
+  // File name = item code (e.g. 011158.jpg) attaches automatically; anything else is matched by hand below.
+  const assign = { items: [] };
+  function toJpeg(img, max) { const s = Math.min(1, max / Math.max(img.width, img.height)); const c = document.createElement('canvas'); c.width = Math.round(img.width * s); c.height = Math.round(img.height * s); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); return c.toDataURL('image/jpeg', 0.85); }
+  async function uploadPhoto(code, dataUrl) {
+    const r = await fetch('api/frames/photo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, image: dataUrl }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    return d.url;
+  }
+  $('filePhotos').addEventListener('change', async () => {
+    const files = [...($('filePhotos').files || [])]; $('filePhotos').value = '';
+    if (!files.length) return;
+    if (!Catalog.isOnline()) { alert('Photo upload needs the Frame Finder server (sign in on the online address).'); return; }
+    const codes = new Map(Catalog.all().map((f) => [String(f.code).toLowerCase(), f.code]));
+    $('codeList').innerHTML = Catalog.all().map((f) => '<option value="' + esc(f.code) + '">' + esc(f.brand + ' ' + f.model) + '</option>').join('');
+    assign.items = []; $('assignRows').innerHTML = ''; $('photoAssign').hidden = false; $('assignMsg').textContent = 'Preparing ' + files.length + ' photo(s)…';
+    let auto = 0;
+    for (const file of files) {
+      let dataUrl, fullUrl;
+      try { const img = await loadImage(file); dataUrl = toJpeg(img, 900); fullUrl = toJpeg(img, 2400); } catch (e) { continue; }
+      const stem = file.name.replace(/\.[^.]+$/, '').trim();
+      const hit = codes.get(stem.toLowerCase());
+      const item = { file: file.name, dataUrl, fullUrl, code: hit || '', done: false };
+      assign.items.push(item);
+      if (hit) { try { Catalog.setImage(hit, await uploadPhoto(hit, dataUrl)); item.done = true; auto++; } catch (e) { item.error = e.message; } }
+    }
+    renderAssign();
+    $('assignMsg').textContent = auto + ' attached by file name, ' + assign.items.filter((i) => !i.done).length + ' to match by hand.';
+    renderFrames();
+  });
+  function renderAssign() {
+    $('assignRows').innerHTML = '';
+    assign.items.forEach((it, i) => {
+      const row = document.createElement('div'); row.className = 'assign';
+      row.innerHTML = '<img src="' + it.dataUrl + '" alt=""><div><div class="fn">' + esc(it.file) + '</div>' +
+        (it.done ? '<div class="done">✓ Attached to ' + esc(it.code) + '</div>' : '<input list="codeList" placeholder="Item code (type to search code or name)" value="' + esc(it.code) + '" data-i="' + i + '">' + (it.error ? '<div class="against small">' + esc(it.error) + '</div>' : '')) +
+        '</div>' + (it.done ? '<span></span>' : '<div class="acts"><button class="btn small-btn" type="button" data-save="' + i + '">Save</button>' + (it.fullUrl ? '<button class="btn small-btn" type="button" data-tray="' + i + '">Split tray</button>' : '') + '</div>');
+      $('assignRows').appendChild(row);
+    });
+    $('assignRows').querySelectorAll('input[data-i]').forEach((inp) => inp.addEventListener('input', () => { assign.items[Number(inp.dataset.i)].code = inp.value.trim(); }));
+    $('assignRows').querySelectorAll('button[data-save]').forEach((b) => b.addEventListener('click', () => saveAssign(Number(b.dataset.save))));
+    $('assignRows').querySelectorAll('button[data-tray]').forEach((b) => b.addEventListener('click', () => openTray(Number(b.dataset.tray))));
+  }
+
+  // ---------------- tray photos: one photo of a display tray -> one picture per frame ----------------
+  // Staff tap the tray's four corners; the quadrilateral is divided into columns x rows and each cell becomes a
+  // separate photo in the assignment list (the original tray row is removed).
+  const tray = { index: -1, img: null, pts: [] };
+  function openTray(i) {
+    const it = assign.items[i]; if (!it) return;
+    const img = new Image();
+    img.onload = () => {
+      tray.index = i; tray.img = img; tray.pts = [];
+      const c = $('trayCanvas'); const s = Math.min(1, 1400 / Math.max(img.width, img.height));
+      c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+      drawTray(); $('trayDlg').showModal();
+    };
+    img.src = it.fullUrl || it.dataUrl;
+  }
+  function drawTray() {
+    const c = $('trayCanvas'), g = c.getContext('2d');
+    g.drawImage(tray.img, 0, 0, c.width, c.height);
+    const lw = Math.max(2, c.width / 400);
+    g.lineWidth = lw; g.strokeStyle = '#ffd60a'; g.fillStyle = '#ffd60a';
+    tray.pts.forEach((p, i) => { g.beginPath(); g.arc(p.x, p.y, lw * 3, 0, Math.PI * 2); g.fill(); g.font = (lw * 6) + 'px sans-serif'; g.fillText(String(i + 1), p.x + lw * 4, p.y - lw * 2); });
+    if (tray.pts.length === 4) {
+      const cols = Number($('trayCols').value) || 3, rows = Number($('trayRows').value) || 4;
+      for (let r = 0; r <= rows; r++) for (let col = 0; col <= cols; col++) {
+        if (r < rows) { const a = quadPt(col / cols, r / rows), b = quadPt(col / cols, (r + 1) / rows); g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke(); }
+        if (col < cols) { const a = quadPt(col / cols, r / rows), b = quadPt((col + 1) / cols, r / rows); g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke(); }
+      }
+    }
+    $('traySplit').disabled = tray.pts.length !== 4;
+    $('trayHint').textContent = tray.pts.length < 4 ? 'Tap corner ' + (tray.pts.length + 1) + ' of 4: ' + ['top-left', 'top-right', 'bottom-right', 'bottom-left'][tray.pts.length] + ' of the tray.' : 'Check the grid lines sit on the tray dividers, adjust columns/rows if needed, then Split.';
+  }
+  // Bilinear point inside the tapped quadrilateral (u across, v down).
+  function quadPt(u, v) {
+    const [tl, tr, br, bl] = tray.pts;
+    const top = { x: tl.x + (tr.x - tl.x) * u, y: tl.y + (tr.y - tl.y) * u };
+    const bot = { x: bl.x + (br.x - bl.x) * u, y: bl.y + (br.y - bl.y) * u };
+    return { x: top.x + (bot.x - top.x) * v, y: top.y + (bot.y - top.y) * v };
+  }
+  $('trayCanvas').addEventListener('click', (e) => {
+    if (tray.pts.length >= 4) return;
+    const c = $('trayCanvas'), r = c.getBoundingClientRect();
+    if (!r.width || !r.height) return; // dialog not laid out yet
+    tray.pts.push({ x: (e.clientX - r.left) * c.width / r.width, y: (e.clientY - r.top) * c.height / r.height });
+    drawTray();
+  });
+  $('trayUndo').addEventListener('click', () => { tray.pts.pop(); drawTray(); });
+  $('trayCols').addEventListener('input', drawTray); $('trayRows').addEventListener('input', drawTray);
+  $('trayCancel').addEventListener('click', () => $('trayDlg').close());
+  $('traySplit').addEventListener('click', () => {
+    const cols = Number($('trayCols').value) || 3, rows = Number($('trayRows').value) || 4;
+    const src = $('trayCanvas'); const it = assign.items[tray.index];
+    const pieces = [];
+    for (let r = 0; r < rows; r++) for (let col = 0; col < cols; col++) {
+      const corners = [quadPt(col / cols, r / rows), quadPt((col + 1) / cols, r / rows), quadPt((col + 1) / cols, (r + 1) / rows), quadPt(col / cols, (r + 1) / rows)];
+      const x1 = Math.max(0, Math.min(...corners.map((p) => p.x))), x2 = Math.min(src.width, Math.max(...corners.map((p) => p.x)));
+      const y1 = Math.max(0, Math.min(...corners.map((p) => p.y))), y2 = Math.min(src.height, Math.max(...corners.map((p) => p.y)));
+      if (!(x2 - x1 >= 10 && y2 - y1 >= 10)) continue; // also skips NaN
+      const c = document.createElement('canvas'); c.width = Math.round(x2 - x1); c.height = Math.round(y2 - y1);
+      c.getContext('2d').drawImage(tray.img, x1 * tray.img.width / src.width, y1 * tray.img.height / src.height, (x2 - x1) * tray.img.width / src.width, (y2 - y1) * tray.img.height / src.height, 0, 0, c.width, c.height);
+      const out = document.createElement('canvas'); const s = Math.min(1, 900 / Math.max(c.width, c.height)); out.width = Math.round(c.width * s); out.height = Math.round(c.height * s);
+      out.getContext('2d').drawImage(c, 0, 0, out.width, out.height);
+      pieces.push({ file: it.file.replace(/\.[^.]+$/, '') + ' — row ' + (r + 1) + ', col ' + (col + 1), dataUrl: out.toDataURL('image/jpeg', 0.85), code: '', done: false });
+    }
+    assign.items.splice(tray.index, 1, ...pieces);
+    $('trayDlg').close(); renderAssign();
+    $('assignMsg').textContent = pieces.length + ' frame pictures cut from the tray. Type the item code for each and Save.';
+  });
+  async function saveAssign(i) {
+    const it = assign.items[i]; if (!it || it.done) return;
+    const code = String(it.code || '').trim(); if (!code) { $('assignMsg').textContent = 'Enter an item code for ' + it.file + '.'; return; }
+    try {
+      let f = Catalog.all().find((x) => String(x.code).toLowerCase() === code.toLowerCase());
+      if (!f) { if (!confirm('Item ' + code + ' is not in the catalog. Create it (you can fill the details later)?')) return; f = Catalog.upsert({ code, model: code, shape: 'Rectangle', material: 'Sheet', rim: 'Full', weight: 'Medium', gender: 'Unisex', qty: 1 }); }
+      const url = await uploadPhoto(f.code, it.dataUrl);
+      Catalog.setImage(f.code, url); it.code = f.code; it.done = true; it.error = '';
+    } catch (e) { it.error = e.message; }
+    renderAssign(); renderFrames();
+    $('assignMsg').textContent = assign.items.filter((x) => x.done).length + ' of ' + assign.items.length + ' photos attached.';
+  }
+  $('assignAll').addEventListener('click', async () => { for (let i = 0; i < assign.items.length; i++) if (!assign.items[i].done && assign.items[i].code) await saveAssign(i); });
+  $('assignClose').addEventListener('click', () => { $('photoAssign').hidden = true; assign.items = []; });
 
   function download(name, text, type) {
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; a.click();
@@ -549,7 +676,7 @@
   // edit dialog
   const form = el.editForm;
   function fillSelect(name, opts) { const s = form.elements[name]; s.innerHTML = opts.map((o) => '<option>' + o + '</option>').join(''); }
-  fillSelect('shape', Catalog.SHAPES); fillSelect('material', Catalog.MATERIALS); fillSelect('rim', Catalog.RIMS);
+  fillSelect('category', Catalog.CATEGORIES); fillSelect('shape', Catalog.SHAPES); fillSelect('material', Catalog.MATERIALS); fillSelect('rim', Catalog.RIMS);
   fillSelect('weight', Catalog.WEIGHTS); fillSelect('colour_family', Catalog.FAMILIES); fillSelect('gender', Catalog.GENDERS);
 
   function openEdit(f) {
@@ -569,7 +696,7 @@
   });
 
   // ---------------- AI tagging ----------------
-  const APP_VERSION = '2026-09-15.2'; // shown in the header so staff can tell which build the tablet is running
+  const APP_VERSION = '2026-09-21.1'; // shown in the header so staff can tell which build the tablet is running
   $('verPill').textContent = 'v' + APP_VERSION;
   function netStatus(ok, text) { const p = $('netPill'); p.textContent = text; p.className = 'net ' + (ok ? 'on' : 'off'); }
   fetch('api/health', { cache: 'no-store' }).then((r) => r.json()).then((h) => {

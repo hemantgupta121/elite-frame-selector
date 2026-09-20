@@ -127,6 +127,14 @@ main { padding: 16px; max-width: 1280px; margin: 0 auto; }
 .frame .name { font-weight: 700; }
 .frame .meta { font-size: 12px; color: var(--muted); }
 .frame .oos { color: var(--bad); }
+.assign { display: grid; grid-template-columns: 120px 1fr auto; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.assign img { width: 120px; height: 80px; object-fit: contain; background: var(--bg); border-radius: 8px; }
+.assign input { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; min-height: 44px; width: 100%; }
+.assign .fn { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.assign .done { color: var(--good); font-weight: 600; }
+.assign .acts { display: flex; flex-direction: column; gap: 6px; }
+.tray-stage { margin-top: 10px; background: #111; border-radius: 12px; overflow: hidden; }
+.tray-stage canvas { display: block; width: 100%; height: auto; cursor: crosshair; touch-action: manipulation; }
 
 /* tag */
 .tag-grid { display: grid; grid-template-columns: minmax(280px, 480px) 1fr; gap: 20px; }

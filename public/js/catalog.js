@@ -9,7 +9,8 @@
   'use strict';
 
   const KEY = 'eff.frames.v1';
-  const FIELDS = ['code', 'brand', 'model', 'shape', 'material', 'rim', 'weight', 'colour', 'colour_family', 'eye', 'bridge', 'temple', 'gender', 'price', 'qty', 'image'];
+  const FIELDS = ['code', 'brand', 'model', 'category', 'shape', 'material', 'rim', 'weight', 'colour', 'colour_family', 'eye', 'bridge', 'temple', 'gender', 'price', 'qty', 'image'];
+  const CATEGORIES = ['Frame', 'Sunglass'];
   const SHAPES = ['Rectangle', 'Square', 'Round', 'Oval', 'Cat-eye', 'Aviator', 'Wayfarer', 'Browline', 'Geometric', 'Oversized'];
   const MATERIALS = ['Sheet', 'Metal', 'TR90', 'Combination', 'Titanium'];
   const RIMS = ['Full', 'Half', 'Rimless'];
@@ -25,22 +26,41 @@
   };
 
   let frames = [];
+  // The catalog lives on the Frame Finder server (shared by every tablet); localStorage is the offline copy.
+  // The sample list is only used when there is no server at all (pure offline first run).
+  const API = 'api/frames';
+  let serverOk = false, pushTimer = null;
 
-  function load(seedUrl) {
-    try {
-      const raw = localStorage.getItem(KEY);
-      if (raw) { frames = JSON.parse(raw); return Promise.resolve(frames); }
-    } catch (e) { /* storage unavailable: fall through to seed */ }
-    return fetch(seedUrl).then((r) => r.json()).then((list) => { frames = list.map(normalise); save(); return frames; });
+  function readLocal() { try { const raw = localStorage.getItem(KEY); return raw ? JSON.parse(raw) : []; } catch (e) { return []; } }
+  function saveLocal() { try { localStorage.setItem(KEY, JSON.stringify(frames)); } catch (e) { /* ignore */ } }
+  function push() {
+    if (!serverOk || typeof fetch !== 'function') return;
+    clearTimeout(pushTimer);
+    pushTimer = setTimeout(() => { fetch(API, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(frames) }).catch(() => { /* retried on next change */ }); }, 400);
   }
-  function save() { try { localStorage.setItem(KEY, JSON.stringify(frames)); } catch (e) { /* ignore */ } }
+  function load(seedUrl) {
+    frames = readLocal().map(normalise);
+    return fetch(API, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))).then((list) => {
+      serverOk = true;
+      if (Array.isArray(list) && list.length) { frames = list.map(normalise); saveLocal(); }
+      else if (frames.length) push(); // server is empty but this tablet has a catalog: seed the server from it
+      return frames;
+    }).catch(() => {
+      serverOk = false;
+      if (frames.length || !seedUrl) return frames;
+      return fetch(seedUrl).then((r) => r.json()).then((list) => { frames = list.map(normalise); saveLocal(); return frames; }).catch(() => frames);
+    });
+  }
+  function save() { saveLocal(); push(); }
   function all() { return frames.slice(); }
-  function reset(seedUrl) { try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ } frames = []; return load(seedUrl); }
+  function reset() { frames = []; save(); return Promise.resolve(frames); }
+  function isOnline() { return serverOk; }
 
   function normalise(f) {
     const o = {};
     for (const k of FIELDS) o[k] = f[k] == null ? '' : f[k];
     for (const k of ['eye', 'bridge', 'temple', 'price', 'qty']) o[k] = o[k] === '' ? '' : Number(o[k]);
+    if (!o.category) o.category = /sun/i.test(o.model + ' ' + o.brand) ? 'Sunglass' : 'Frame';
     if (!o.colour_family) o.colour_family = guessFamily(o.colour);
     o.total_width = o.eye && o.bridge ? 2 * Number(o.eye) + Number(o.bridge) + 8 : '';
     return o;
@@ -51,6 +71,44 @@
     if (/silver|blue|grey|gray|burgundy|wine|purple|pink|navy|gunmetal/.test(c)) return 'Cool';
     return 'Neutral';
   }
+  // Elite inventory names carry the attributes in shop shorthand ("ARMANI BRW FULL FR SHEET 52", "Metal supra",
+  // "Sleek Metal", "ASST RIMLESS BLUE"). Turn that into catalog fields so an import needs no retyping.
+  function guessFromName(name) {
+    const n = ' ' + String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ') + ' ';
+    const has = (re) => re.test(n);
+    const g = {};
+    if (has(/ (sheet|acetate|plastic|shet) /)) g.material = 'Sheet';
+    else if (has(/ (tr|tr90|tr 90|flex|flexi|ultem) /)) g.material = 'TR90';
+    else if (has(/ titan(ium)? /)) g.material = 'Titanium';
+    else if (has(/ (metal|steel|mtl) /)) g.material = 'Metal';
+    if (has(/ (rimless|3 ?pc|3 ?piece|drill) /)) { g.rim = 'Rimless'; if (!g.material) g.material = 'Metal'; }
+    else if (has(/ (supra|half|semi|nylon|hr) /)) { g.rim = 'Half'; if (!g.material) g.material = 'Metal'; }
+    else if (has(/ (full|ff|fr|fullrim) /)) g.rim = 'Full';
+    if (has(/ (aviator|avi) /)) g.shape = 'Aviator';
+    else if (has(/ (round|rnd|circle) /)) g.shape = 'Round';
+    else if (has(/ (oval) /)) g.shape = 'Oval';
+    else if (has(/ (cat|cateye|cat eye|butterfly) /)) g.shape = 'Cat-eye';
+    else if (has(/ (wayfarer|wf|way) /)) g.shape = 'Wayfarer';
+    else if (has(/ (browline|clubmaster|club) /)) g.shape = 'Browline';
+    else if (has(/ (hexa|hexagon|octa|geo|geometric) /)) g.shape = 'Geometric';
+    else if (has(/ (oversize|oversized|big) /)) g.shape = 'Oversized';
+    else if (has(/ (sq|square|squre) /)) g.shape = 'Square';
+    else if (has(/ (rect|rectangle|rectangular) /)) g.shape = 'Rectangle';
+    if (has(/ (sleek|thin|slim|light|fine) /)) g.weight = 'Thin';
+    else if (has(/ (bold|broad|thick|heavy|chunky) /)) g.weight = 'Broad';
+    if (has(/ (kids|kid|baby|child|children|teenager|teen|junior) /)) g.gender = 'Kids';
+    else if (has(/ (ladies|lady|women|woman|female|girls) /)) g.gender = 'Women';
+    else if (has(/ (gents|gent|men|man|male|boys) /)) g.gender = 'Men';
+    const colours = [['black', /(blk|black)/], ['Gold', /(gold|gld)/], ['Silver', /(silver|slv)/], ['Grey', /(grey|gray)/], ['Brown', /(brw|brown|brn)/], ['Tortoise', /(tortoise|torto|demi|havana)/],
+      ['Blue', /(blue|blu)/], ['Green', /(green|grn)/], ['Red', /(red)/], ['Pink', /(pink)/], ['Purple', /(purple|violet)/], ['Transparent', /(trans|transparent|clear|crystal)/], ['Gunmetal', /(gun|gunmetal)/], ['Rose gold', /(rose)/], ['Wine', /(wine|maroon|burgundy)/], ['White', /(white)/]];
+    const found = colours.filter(([, re]) => has(new RegExp(' ' + re.source + ' '))).map(([c]) => c[0].toUpperCase() + c.slice(1));
+    if (found.length) g.colour = found.join(' / ');
+    const size = n.match(/ (4[2-9]|5[0-9]|6[0-2]) /);
+    if (size) g.eye = Number(size[1]);
+    if (has(/ (sun|sunglass|sunglasses|goggle|goggles) /)) g.category = 'Sunglass';
+    return g;
+  }
+
   function upsert(f) {
     const n = normalise(f);
     if (!n.code) throw new Error('Item code is required');
@@ -146,11 +204,46 @@
     const head = rows[0].map((h) => h.trim().toLowerCase().replace(/\s+/g, '_'));
     return rows.slice(1).filter((r) => r.some((c) => c.trim() !== '')).map((r) => { const o = {}; head.forEach((h, i) => { o[h] = (r[i] || '').trim(); }); return o; });
   }
+  // Accepts our own export, or an Elite inventory export (Item Stock Summary / items list): code, name,
+  // default_price/price, closing_stock/qty, category. Missing attributes are guessed from the item name.
   function importCSV(text) {
-    const list = parseCSV(text); let n = 0;
-    for (const o of list) { if (!o.code) continue; upsert(o); n++; }
+    const list = parseCSV(text); let n = 0, skipped = 0;
+    // Importing a real inventory retires the built-in sample frames (FR1001…FR1030) unless a photo was attached to one.
+    if (list.some((r) => r.code && !/^FR10\d\d$/.test(r.code))) frames = frames.filter((f) => !(/^FR10\d\d$/.test(f.code) && !f.image));
+    for (const raw of list) {
+      const o = Object.assign({}, raw);
+      if (!o.code) continue;
+      if (o.category && !/frame|sun|goggle/i.test(o.category)) { skipped++; continue; }
+      const name = o.name || o.item_name || o.item || '';
+      if (name && !o.model) o.model = name;
+      if (o.default_price != null && o.default_price !== '' && (o.price == null || o.price === '')) o.price = o.default_price;
+      if (o.closing_stock != null && o.closing_stock !== '' && (o.qty == null || o.qty === '')) o.qty = o.closing_stock;
+      if (o.stock != null && o.stock !== '' && (o.qty == null || o.qty === '')) o.qty = o.stock;
+      const g = guessFromName(name || o.model);
+      for (const k of Object.keys(g)) if (o[k] == null || o[k] === '') o[k] = g[k];
+      // Shape stays blank when the name does not say: an unknown shape must not score as a match.
+      if (!o.material) o.material = 'Sheet';
+      if (!o.rim) o.rim = 'Full';
+      if (!o.weight) o.weight = 'Medium';
+      if (!o.gender) o.gender = 'Unisex';
+      if (o.category && /sun|goggle/i.test(o.category)) o.category = 'Sunglass'; else if (o.category) o.category = 'Frame';
+      const existing = frames.find((f) => f.code === o.code);
+      if (existing) { // keep hand-entered attributes and photo; refresh name/price/qty from the inventory
+        for (const k of FIELDS) if (existing[k] !== '' && existing[k] != null && !['price', 'qty', 'model'].includes(k)) o[k] = existing[k];
+        if (existing.image) o.image = existing.image;
+      }
+      upsertQuiet(o); n++;
+    }
+    save();
+    return { imported: n, skipped };
+  }
+  function upsertQuiet(f) {
+    const n = normalise(f);
+    const i = frames.findIndex((x) => x.code === n.code);
+    if (i >= 0) frames[i] = n; else frames.push(n);
     return n;
   }
+  function setImage(code, url) { const f = frames.find((x) => x.code === code); if (!f) return null; f.image = url; save(); return f; }
 
-  return { FIELDS, SHAPES, MATERIALS, RIMS, WEIGHTS, FAMILIES, GENDERS, load, save, all, reset, upsert, remove, match, svg, colourHex, guessFamily, toCSV, parseCSV, importCSV, normalise };
+  return { FIELDS, CATEGORIES, SHAPES, MATERIALS, RIMS, WEIGHTS, FAMILIES, GENDERS, load, save, all, reset, isOnline, upsert, remove, setImage, match, svg, colourHex, guessFamily, guessFromName, toCSV, parseCSV, importCSV, normalise };
 });
