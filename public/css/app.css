@@ -128,7 +128,9 @@ main { padding: 16px; max-width: 1280px; margin: 0 auto; }
 .frame .meta { font-size: 12px; color: var(--muted); }
 .frame .oos { color: var(--bad); }
 .assign { display: grid; grid-template-columns: 120px 1fr auto; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
-.assign img { width: 120px; height: 80px; object-fit: contain; background: var(--bg); border-radius: 8px; }
+.assign img { width: 120px; height: 80px; object-fit: contain; background: var(--bg); border-radius: 8px; cursor: zoom-in; }
+.assign.big { grid-template-columns: 1fr; }
+.assign.big img { width: 100%; height: auto; max-height: 70vh; cursor: zoom-out; }
 .assign input { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; min-height: 44px; width: 100%; }
 .assign .fn { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
 .assign .done { color: var(--good); font-weight: 600; }
@@ -138,6 +140,14 @@ main { padding: 16px; max-width: 1280px; margin: 0 auto; }
 
 /* tag */
 .tag-grid { display: grid; grid-template-columns: minmax(280px, 480px) 1fr; gap: 20px; }
+.quick { margin-bottom: 16px; }
+.quick .cam { position: relative; width: 100%; aspect-ratio: 4 / 3; background: #0f1418; border-radius: var(--radius); overflow: hidden; }
+.quick .cam video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.quick .cam .found { position: absolute; left: 10px; right: 10px; bottom: 10px; background: rgba(31,143,78,.92); color: #fff; padding: 10px 12px; border-radius: 10px; font-weight: 600; }
+.quick .cam .found.none { background: rgba(0,0,0,.55); font-weight: 400; }
+.quick input.code { padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; min-height: 48px; font-size: 18px; width: 180px; }
+.quick .recent { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.quick .recent img { width: 90px; height: 60px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
 .preview { max-width: 100%; border-radius: var(--radius); margin-top: 12px; }
 
 /* dialog */

@@ -564,7 +564,7 @@
       try { const img = await loadImage(file); dataUrl = toJpeg(img, 900); fullUrl = toJpeg(img, 2400); } catch (e) { continue; }
       const stem = file.name.replace(/\.[^.]+$/, '').trim();
       const hit = codes.get(stem.toLowerCase());
-      const item = { file: file.name, dataUrl, fullUrl, code: hit || '', done: false };
+      const item = { file: file.name, dataUrl, fullUrl, fileObj: file, code: hit || '', done: false };
       assign.items.push(item);
       if (hit) { try { Catalog.setImage(hit, await uploadPhoto(hit, dataUrl)); item.done = true; auto++; } catch (e) { item.error = e.message; } }
     }
@@ -576,7 +576,7 @@
     $('assignRows').innerHTML = '';
     assign.items.forEach((it, i) => {
       const row = document.createElement('div'); row.className = 'assign';
-      row.innerHTML = '<img src="' + it.dataUrl + '" alt=""><div><div class="fn">' + esc(it.file) + '</div>' +
+      row.innerHTML = '<img src="' + it.dataUrl + '" alt="" title="Tap to enlarge"><div><div class="fn">' + esc(it.file) + (it.scanned && !it.done ? ' · <span class="done">sticker read: ' + esc(it.code) + '</span>' : '') + '</div>' +
         (it.done ? '<div class="done">✓ Attached to ' + esc(it.code) + '</div>' : '<input list="codeList" placeholder="Item code (type to search code or name)" value="' + esc(it.code) + '" data-i="' + i + '">' + (it.error ? '<div class="against small">' + esc(it.error) + '</div>' : '')) +
         '</div>' + (it.done ? '<span></span>' : '<div class="acts"><button class="btn small-btn" type="button" data-save="' + i + '">Save</button>' + (it.fullUrl ? '<button class="btn small-btn" type="button" data-tray="' + i + '">Split tray</button>' : '') + '</div>');
       $('assignRows').appendChild(row);
@@ -584,6 +584,7 @@
     $('assignRows').querySelectorAll('input[data-i]').forEach((inp) => inp.addEventListener('input', () => { assign.items[Number(inp.dataset.i)].code = inp.value.trim(); }));
     $('assignRows').querySelectorAll('button[data-save]').forEach((b) => b.addEventListener('click', () => saveAssign(Number(b.dataset.save))));
     $('assignRows').querySelectorAll('button[data-tray]').forEach((b) => b.addEventListener('click', () => openTray(Number(b.dataset.tray))));
+    $('assignRows').querySelectorAll('.assign img').forEach((im) => im.addEventListener('click', () => im.closest('.assign').classList.toggle('big')));
   }
 
   // ---------------- tray photos: one photo of a display tray -> one picture per frame ----------------
@@ -634,10 +635,62 @@
   $('trayUndo').addEventListener('click', () => { tray.pts.pop(); drawTray(); });
   $('trayCols').addEventListener('input', drawTray); $('trayRows').addEventListener('input', drawTray);
   $('trayCancel').addEventListener('click', () => $('trayDlg').close());
-  $('traySplit').addEventListener('click', () => {
+  // Read the barcode sticker inside a tray cell (Android Chrome has a built-in detector; elsewhere this is a no-op).
+  // The sticker's barcode carries the Elite item code, so a hit prefills the code for staff to confirm.
+  const detector = ('BarcodeDetector' in window) ? new window.BarcodeDetector({ formats: ['code_128', 'code_39', 'ean_13', 'ean_8', 'upc_a', 'itf', 'codabar'] }) : null;
+  // Fallback for browsers without a built-in detector (Windows/Mac Chrome, Firefox): ZXing, loaded on first use.
+  let zxingP = null;
+  function loadZXing() {
+    if (window.ZXing) return Promise.resolve(window.ZXing);
+    if (!zxingP) zxingP = new Promise((resolve, reject) => { const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js'; s.onload = () => resolve(window.ZXing); s.onerror = () => reject(new Error('barcode library failed to load')); document.head.appendChild(s); });
+    return zxingP;
+  }
+  function matchCode(raw, codes) {
+    raw = String(raw || '').trim();
+    if (codes.has(raw.toLowerCase())) return codes.get(raw.toLowerCase());
+    const digits = raw.replace(/\D/g, ''); // stickers sometimes wrap the code in extra characters
+    if (digits.length >= 5) for (const [k, v] of codes) if (digits === k || digits.endsWith(k) || (k.length >= 5 && k.endsWith(digits))) return v;
+    return '';
+  }
+  // Decode with ZXing from a canvas, trying the crop upright and rotated (stickers on temples are often vertical).
+  function zxingDecode(ZX, canvas) {
+    const reader = new ZX.MultiFormatReader();
+    const hints = new Map(); hints.set(ZX.DecodeHintType.TRY_HARDER, true); reader.setHints(hints);
+    const tryCanvas = (cv) => { try { return reader.decode(new ZX.BinaryBitmap(new ZX.HybridBinarizer(new ZX.HTMLCanvasElementLuminanceSource(cv)))).getText(); } catch (e) { return ''; } };
+    let t = tryCanvas(canvas); if (t) return t;
+    const rot = document.createElement('canvas'); rot.width = canvas.height; rot.height = canvas.width;
+    const g = rot.getContext('2d'); g.translate(rot.width / 2, rot.height / 2); g.rotate(Math.PI / 2); g.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
+    return tryCanvas(rot);
+  }
+  async function readCellCode(file, sx, sy, sw, sh, codes) {
+    if (!file || !('createImageBitmap' in window)) return '';
+    try {
+      const bmp = await createImageBitmap(file, Math.max(0, Math.round(sx)), Math.max(0, Math.round(sy)), Math.max(1, Math.round(sw)), Math.max(1, Math.round(sh)));
+      if (detector) {
+        const found = await detector.detect(bmp);
+        for (const b of found) { const m = matchCode(b.rawValue, codes); if (m) { bmp.close && bmp.close(); return m; } }
+      }
+      // ZXing works best around 1200 px wide; downscale huge crops, keep small ones.
+      const ZX = await loadZXing().catch(() => null);
+      if (ZX) {
+        const s = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+        const cv = document.createElement('canvas'); cv.width = Math.round(bmp.width * s); cv.height = Math.round(bmp.height * s);
+        cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
+        const m = matchCode(zxingDecode(ZX, cv), codes);
+        if (m) { bmp.close && bmp.close(); return m; }
+      }
+      bmp.close && bmp.close();
+    } catch (e) { /* unreadable cell: staff type the code */ }
+    return '';
+  }
+
+  $('traySplit').addEventListener('click', async () => {
     const cols = Number($('trayCols').value) || 3, rows = Number($('trayRows').value) || 4;
     const src = $('trayCanvas'); const it = assign.items[tray.index];
+    const codes = new Map(Catalog.all().map((f) => [String(f.code).toLowerCase(), f.code]));
     const pieces = [];
+    $('traySplit').disabled = true; $('trayHint').textContent = 'Cutting the tray and reading the code stickers…';
+    let sx0 = 0, sy0 = 0, fw = tray.img.width, fh = tray.img.height; // full-resolution geometry for barcode reading
     for (let r = 0; r < rows; r++) for (let col = 0; col < cols; col++) {
       const corners = [quadPt(col / cols, r / rows), quadPt((col + 1) / cols, r / rows), quadPt((col + 1) / cols, (r + 1) / rows), quadPt(col / cols, (r + 1) / rows)];
       const x1 = Math.max(0, Math.min(...corners.map((p) => p.x))), x2 = Math.min(src.width, Math.max(...corners.map((p) => p.x)));
@@ -647,11 +700,16 @@
       c.getContext('2d').drawImage(tray.img, x1 * tray.img.width / src.width, y1 * tray.img.height / src.height, (x2 - x1) * tray.img.width / src.width, (y2 - y1) * tray.img.height / src.height, 0, 0, c.width, c.height);
       const out = document.createElement('canvas'); const s = Math.min(1, 900 / Math.max(c.width, c.height)); out.width = Math.round(c.width * s); out.height = Math.round(c.height * s);
       out.getContext('2d').drawImage(c, 0, 0, out.width, out.height);
-      pieces.push({ file: it.file.replace(/\.[^.]+$/, '') + ' — row ' + (r + 1) + ', col ' + (col + 1), dataUrl: out.toDataURL('image/jpeg', 0.85), code: '', done: false });
+      // Barcode read from the original file at native resolution (the preview canvas is too small to decode).
+      const scaleX = (it.fileObj ? fw : tray.img.width) / src.width, scaleY = (it.fileObj ? fh : tray.img.height) / src.height;
+      const code = await readCellCode(it.fileObj, x1 * scaleX, y1 * scaleY, (x2 - x1) * scaleX, (y2 - y1) * scaleY, codes);
+      pieces.push({ file: it.file.replace(/\.[^.]+$/, '') + ' — row ' + (r + 1) + ', col ' + (col + 1), dataUrl: out.toDataURL('image/jpeg', 0.85), code, scanned: !!code, done: false });
     }
+    if (it.fileObj && !detector) { /* desktop browsers: no sticker reading, staff type the codes */ }
     assign.items.splice(tray.index, 1, ...pieces);
-    $('trayDlg').close(); renderAssign();
-    $('assignMsg').textContent = pieces.length + ' frame pictures cut from the tray. Type the item code for each and Save.';
+    $('trayDlg').close(); $('traySplit').disabled = false; renderAssign();
+    const read = pieces.filter((p) => p.scanned).length;
+    $('assignMsg').textContent = pieces.length + ' frame pictures cut from the tray' + (detector ? ', ' + read + ' code stickers read automatically' : '') + '. Check or type the item code for each, then Save all matched.';
   });
   async function saveAssign(i) {
     const it = assign.items[i]; if (!it || it.done) return;
@@ -695,8 +753,59 @@
     try { Catalog.upsert(o); el.editDlg.close(); renderFrames(); if (state.result) renderResult(); } catch (err) { alert(err.message); }
   });
 
+  // ---------------- quick photo: live barcode -> snap -> attach ----------------
+  const qp = { stream: null, timer: null, code: '', busy: false };
+  function qpCodes() { return new Map(Catalog.all().map((f) => [String(f.code).toLowerCase(), f.code])); }
+  function qpShow(code) {
+    const f = code ? Catalog.all().find((x) => x.code === code) : null;
+    const box = $('qpFound');
+    if (f) { box.className = 'found'; box.textContent = 'Code ' + f.code + ' — ' + (f.brand + ' ' + f.model).trim() + (f.image ? ' (has a photo; Snap replaces it)' : ''); $('qpSnap').hidden = false; }
+    else { box.className = 'found none'; box.textContent = detector ? 'Looking for a barcode sticker… or type the code above.' : 'Type the item code above, then Snap.'; $('qpSnap').hidden = !$('qpCode').value.trim(); }
+  }
+  async function qpScanLoop() {
+    if (!qp.stream) return;
+    const v = $('qpVideo');
+    if (detector && v.videoWidth && !qp.busy) {
+      try {
+        const found = await detector.detect(v);
+        const codes = qpCodes();
+        for (const b of found) { const m = matchCode(b.rawValue, codes); if (m && m !== qp.code) { qp.code = m; $('qpCode').value = m; qpShow(m); break; } }
+      } catch (e) { /* keep scanning */ }
+    }
+    qp.timer = setTimeout(qpScanLoop, 350);
+  }
+  $('qpStart').addEventListener('click', async () => {
+    if (!Catalog.isOnline()) { $('qpMsg').textContent = 'Quick photo needs the Frame Finder server (sign in on the online address).'; return; }
+    try {
+      qp.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1440 } }, audio: false });
+    } catch (e) { $('qpMsg').textContent = 'Camera not available (' + e.message + '). Live camera needs the https address.'; return; }
+    $('qpVideo').srcObject = qp.stream; $('qpCam').hidden = false; $('qpStart').hidden = true; $('qpStop').hidden = false;
+    $('codeList').innerHTML = Catalog.all().map((f) => '<option value="' + esc(f.code) + '">' + esc(f.brand + ' ' + f.model) + '</option>').join('');
+    qp.code = ''; $('qpCode').value = ''; qpShow(''); qpScanLoop();
+    $('qpMsg').textContent = detector ? 'Scanning for barcodes.' : 'This browser cannot read barcodes live; type the code, then Snap.';
+  });
+  function qpStop() { clearTimeout(qp.timer); if (qp.stream) qp.stream.getTracks().forEach((t) => t.stop()); qp.stream = null; $('qpCam').hidden = true; $('qpStart').hidden = false; $('qpStop').hidden = true; $('qpSnap').hidden = true; }
+  $('qpStop').addEventListener('click', qpStop);
+  $('qpCode').addEventListener('input', () => { const m = qpCodes().get($('qpCode').value.trim().toLowerCase()); qp.code = m || ''; qpShow(qp.code); if (!qp.code) $('qpSnap').hidden = !$('qpCode').value.trim(); });
+  $('qpSnap').addEventListener('click', async () => {
+    const typed = $('qpCode').value.trim();
+    let f = Catalog.all().find((x) => String(x.code).toLowerCase() === typed.toLowerCase());
+    if (!f) { if (!typed || !confirm('Item ' + typed + ' is not in the catalog. Create it and attach the photo?')) return; f = Catalog.upsert({ code: typed, model: typed, shape: '', material: 'Sheet', rim: 'Full', weight: 'Medium', gender: 'Unisex', qty: 1 }); }
+    const v = $('qpVideo'); if (!v.videoWidth) return;
+    qp.busy = true; $('qpSnap').disabled = true; $('qpMsg').textContent = 'Saving photo for ' + f.code + '…';
+    try {
+      const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight; c.getContext('2d').drawImage(v, 0, 0);
+      const url = await uploadPhoto(f.code, toJpeg(c, 1000));
+      Catalog.setImage(f.code, url);
+      const im = document.createElement('img'); im.src = url; im.title = f.code; $('qpRecent').prepend(im); while ($('qpRecent').children.length > 8) $('qpRecent').lastChild.remove();
+      $('qpMsg').textContent = 'Saved photo for ' + f.code + ' (' + (f.brand + ' ' + f.model).trim() + '). Next frame.';
+      qp.code = ''; $('qpCode').value = ''; qpShow('');
+    } catch (e) { $('qpMsg').textContent = 'Could not save: ' + e.message; }
+    finally { qp.busy = false; $('qpSnap').disabled = false; }
+  });
+
   // ---------------- AI tagging ----------------
-  const APP_VERSION = '2026-09-21.1'; // shown in the header so staff can tell which build the tablet is running
+  const APP_VERSION = '2026-09-21.3'; // shown in the header so staff can tell which build the tablet is running
   $('verPill').textContent = 'v' + APP_VERSION;
   function netStatus(ok, text) { const p = $('netPill'); p.textContent = text; p.className = 'net ' + (ok ? 'on' : 'off'); }
   fetch('api/health', { cache: 'no-store' }).then((r) => r.json()).then((h) => {

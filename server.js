@@ -16,7 +16,7 @@ loadEnv(path.join(__dirname, '.env'));
 if (!process.env.ANTHROPIC_API_KEY) loadEnv(path.join(__dirname, '..', 'Elite software', '.env'), ['ANTHROPIC_API_KEY']);
 
 const PORT = Number(process.env.PORT) || 4100;
-const APP_VERSION = '2026-09-21.1';
+const APP_VERSION = '2026-09-21.3';
 const STARTED = new Date().toISOString();
 const PUBLIC = path.join(__dirname, 'public');
 const MODEL = process.env.ANTHROPIC_TAG_MODEL || 'claude-opus-5';

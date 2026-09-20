@@ -196,6 +196,19 @@
 
 <!-- ================= TAG ================= -->
 <section id="panel-tag" class="panel">
+  <div class="card quick">
+    <div class="eyebrow">Quick photo: real picture for each frame in stock</div>
+    <p class="muted small">Tap Start, point the camera at the frame's barcode sticker until the code shows in green (or type it), place the frame in view and tap <b>Snap</b>. The picture is attached to that item and the camera stays on for the next frame. About 10 seconds per frame.</p>
+    <div class="controls">
+      <button id="qpStart" class="btn primary" type="button">Start quick photo</button>
+      <button id="qpStop" class="btn" type="button" hidden>Stop</button>
+      <input id="qpCode" class="code" list="codeList" placeholder="Item code" autocapitalize="none">
+      <button id="qpSnap" class="btn primary" type="button" hidden>Snap</button>
+    </div>
+    <div id="qpCam" class="cam" hidden><video id="qpVideo" autoplay playsinline muted></video><div id="qpFound" class="found none">Looking for a barcode sticker…</div></div>
+    <p id="qpMsg" class="status"></p>
+    <div id="qpRecent" class="recent"></div>
+  </div>
   <div class="tag-grid">
     <div>
       <div class="eyebrow">Photograph a frame, let AI fill the attributes</div>
