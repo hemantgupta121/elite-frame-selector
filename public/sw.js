@@ -2,7 +2,7 @@
  * Two caches: the app shell (versioned; replaced on every release) and the face-model files (kept across
  * releases, ~6 MB, so a tablet can still scan offline right after an update). Own files are network-first.
  */
-const VERSION = 'eff-shell-v9';
+const VERSION = 'eff-shell-v10';
 const MODELS = 'eff-models-v1';
 const SHELL = ['./', 'index.html', 'css/app.css', 'js/faceshape.js', 'js/catalog.js', 'js/app.js', 'js/store.js', 'js/customer.js', 'vendor/jspdf.umd.min.js', 'frames.json', 'manifest.webmanifest', 'img/Elitelogo.svg', 'img/icon-192.png', 'img/icon-512.png'];
 const MP = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1';
@@ -43,6 +43,6 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(fetch(e.request).then((res) => {
       if (res.ok && !res.redirected && res.type === 'basic') caches.open(VERSION).then((c) => c.put(e.request, res.clone()));
       return res;
-    }).catch(() => caches.match(e.request, { cacheName: VERSION })));
+    }).catch(() => caches.match(e.request, { cacheName: VERSION }).then((hit) => hit || new Response('<!doctype html><meta charset="utf-8"><body style="font-family:system-ui;padding:24px"><h2>Frame Finder is offline</h2><p>No connection to the server and this page is not stored on the device yet. Connect to Wi-Fi and open the app again.</p>', { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } }))));
   }
 });

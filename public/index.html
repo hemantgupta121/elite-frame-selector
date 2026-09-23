@@ -9,6 +9,13 @@
 <link rel="icon" href="img/icon-192.png">
 <link rel="apple-touch-icon" href="img/icon-192.png">
 <link rel="stylesheet" href="css/app.css">
+<script>
+// Plain ES5: if any script fails on an old browser, show what happened instead of a blank screen.
+window.addEventListener('error', function (e) {
+  var b = document.getElementById('errBanner'); if (!b) { b = document.createElement('div'); b.id = 'errBanner'; b.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:99;background:#b3261e;color:#fff;padding:10px 14px;font:14px system-ui,sans-serif'; document.body.appendChild(b); }
+  b.innerHTML = 'Frame Finder could not start on this browser: ' + String(e.message || e).replace(/</g, '&lt;') + ' &nbsp; <a href="diag.html" style="color:#fff;font-weight:bold">Run device check</a>';
+});
+</script>
 </head>
 <body>
 <header class="top">

@@ -89,7 +89,7 @@
     // Best-effort copy to the server (office PC) — the tablet copy is the one that matters offline.
     try {
       const body = Object.assign({}, rec);
-      if (pdfs) body.pdfs = Object.fromEntries(Object.entries(pdfs).map(([k, v]) => [k, v.dataUrl]));
+      if (pdfs) { body.pdfs = {}; Object.keys(pdfs).forEach((k) => { body.pdfs[k] = pdfs[k].dataUrl; }); } // no Object.fromEntries: older tablets
       else delete body.pdfs;
       const r = await fetch('api/customers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       rec.synced = r.ok;

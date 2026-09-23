@@ -16,7 +16,7 @@ loadEnv(path.join(__dirname, '.env'));
 if (!process.env.ANTHROPIC_API_KEY) loadEnv(path.join(__dirname, '..', 'Elite software', '.env'), ['ANTHROPIC_API_KEY']);
 
 const PORT = Number(process.env.PORT) || 4100;
-const APP_VERSION = '2026-09-21.3';
+const APP_VERSION = '2026-09-23.1';
 const STARTED = new Date().toISOString();
 const PUBLIC = path.join(__dirname, 'public');
 const MODEL = process.env.ANTHROPIC_TAG_MODEL || 'claude-opus-5';
@@ -208,7 +208,8 @@ function logAccess(req) {
   const ip = (req.socket.remoteAddress || '').replace('::ffff:', '');
   const line = { t: new Date().toISOString(), ip, m: req.method, p: req.url.split('?')[0], ua: (req.headers['user-agent'] || '').slice(0, 80) };
   RECENT.push(line); if (RECENT.length > 300) RECENT.shift();
-  if (!/\.(js|css|png|svg|json|webmanifest|mjs|wasm|task)$/.test(line.p)) console.log(line.t.slice(11, 19) + ' ' + ip + ' ' + line.m + ' ' + line.p);
+  // Page loads also log the browser, so an unsupported tablet can be spotted from the server log.
+  if (!/\.(js|css|png|svg|json|webmanifest|mjs|wasm|task|jpg)$/.test(line.p)) console.log(line.t.slice(11, 19) + ' ' + ip + ' ' + line.m + ' ' + line.p + (/^\/($|index\.html|login\.html|diag\.html)/.test(line.p) ? '  [' + line.ua + ']' : ''));
 }
 const certKey = path.join(__dirname, 'certs', 'key.pem'), certCrt = path.join(__dirname, 'certs', 'cert.pem');
 const useHttps = fs.existsSync(certKey) && fs.existsSync(certCrt);
@@ -263,7 +264,9 @@ const FAILS = new Map();
 function failCount(ip) { const f = FAILS.get(ip); if (!f || f.until < Date.now()) return 0; return f.n; }
 function noteFail(ip) { const f = FAILS.get(ip); const n = (f && f.until > Date.now() ? f.n : 0) + 1; FAILS.set(ip, { n, until: Date.now() + 15 * 60000 }); }
 // Pages that must load before sign-in.
-const PUBLIC_PATHS = /^\/(login\.html|css\/app\.css|img\/[^/]+|manifest\.webmanifest|favicon\.ico)$/;
+const PUBLIC_PATHS = /^\/(login\.html|diag\.html|css\/app\.css|img\/[^/]+|manifest\.webmanifest|favicon\.ico)$/;
+// Device reports posted by /diag.html (capability booleans + user agent, nothing personal). Kept in memory.
+const DIAG = [];
 
 async function handle(req, res) {
   const url = new URL(req.url, 'http://x');
@@ -276,6 +279,15 @@ async function handle(req, res) {
       res.writeHead(503, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       return res.end('<!doctype html><meta charset="utf-8"><title>Setup required</title><body style="font-family:system-ui;padding:40px;max-width:640px"><h2>Elite Frame Finder: setup required</h2><p>This copy is on a public address but no staff password is configured, so it stays closed.</p><p>In Railway open the <b>elite-frame-selector</b> service → <b>Variables</b> → add <code>APP_PASSWORD</code> (and optionally <code>APP_USER</code>, default <code>elite</code>), then redeploy.</p></body>');
     }
+    if (url.pathname === '/api/diag' && req.method === 'POST') {
+      const body = await readJson(req, 64 * 1024);
+      const rows = Array.isArray(body.rows) ? body.rows.slice(0, 40).map((r) => ({ name: String(r.name || '').slice(0, 60), ok: !!r.ok, note: String(r.note || '').slice(0, 300) })) : [];
+      const rep = { t: new Date().toISOString(), ip, ua: (req.headers['user-agent'] || '').slice(0, 200), rows };
+      DIAG.push(rep); if (DIAG.length > 50) DIAG.shift();
+      console.log('DIAG ' + ip + ' ' + rep.ua + ' | ' + rows.filter((r) => !r.ok).map((r) => 'NO:' + r.name + (r.note ? ' (' + r.note + ')' : '')).join('; ') + ' | ' + rows.filter((r) => /Chrome version|Android|Installed|Page address|Memory/.test(r.name)).map((r) => r.name + '=' + r.note).join('; '));
+      return send(res, 200, { ok: true });
+    }
+    if (url.pathname === '/api/diag' && req.method === 'GET') return send(res, 200, DIAG.slice().reverse());
     if (url.pathname === '/api/login' && req.method === 'POST') {
       if (!AUTH_PASS) return send(res, 200, { ok: true, note: 'no password configured on this server' });
       if (failCount(ip) >= 8) return send(res, 429, { error: 'Too many attempts. Wait 15 minutes and try again.' });

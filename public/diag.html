@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frame Finder device check</title>
+<style>
+  body { font: 16px/1.5 system-ui, Arial, sans-serif; margin: 0; padding: 16px; background: #f4f6f8; color: #1d232b; }
+  h1 { font-size: 20px; margin: 0 0 6px; }
+  .ok { color: #1f8f4e; font-weight: bold; } .bad { color: #b3261e; font-weight: bold; }
+  table { border-collapse: collapse; width: 100%; background: #fff; border-radius: 12px; }
+  td { padding: 8px 10px; border-bottom: 1px solid #e3e7ec; vertical-align: top; }
+  .btn { display: inline-block; padding: 12px 18px; border-radius: 12px; background: #E1503A; color: #fff; text-decoration: none; font-weight: bold; margin-top: 12px; }
+  #sent { margin-top: 10px; color: #6b7480; }
+</style>
+</head>
+<body>
+<h1>Frame Finder device check</h1>
+<p id="summary">Checking this device…</p>
+<table id="t"></table>
+<div id="sent"></div>
+<a class="btn" href="./">Open Frame Finder</a>
+<script>
+// Plain ES5 on purpose: this page must run on the oldest browser that can reach it.
+(function () {
+  var rows = [];
+  function add(name, ok, note) { rows.push({ name: name, ok: ok, note: note || '' }); }
+  function test(name, fn) { try { var r = fn(); add(name, !!r, typeof r === 'string' ? r : ''); } catch (e) { add(name, false, String(e && e.message || e)); } }
+  var ua = navigator.userAgent;
+  var chrome = /Chrome\/(\d+)/.exec(ua); var android = /Android (\d+(\.\d+)?)/.exec(ua);
+  add('Browser', true, ua);
+  add('Chrome version', !!chrome && Number(chrome[1]) >= 84, chrome ? chrome[1] + (Number(chrome[1]) < 84 ? ' (too old: needs 84 or newer)' : '') : 'not Chrome');
+  add('Android version', true, android ? android[1] : 'unknown');
+  test('Modern JavaScript (async, arrow, classes)', function () { new Function('async () => { class A {} const {a=1} = {}; for (const x of []) {} }'); return true; });
+  test('Optional chaining / ??', function () { new Function('var a = {}; return a?.b ?? 1'); return true; });
+  test('Dynamic import()', function () { new Function('return import("data:text/javascript,")'); return true; });
+  test('Service worker (offline app)', function () { return 'serviceWorker' in navigator; });
+  test('Secure context (https)', function () { return window.isSecureContext === true; });
+  test('Camera API', function () { return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia); });
+  test('WebGL (face model GPU)', function () { var c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); });
+  test('WebAssembly (face model)', function () { return typeof WebAssembly === 'object'; });
+  test('IndexedDB (customer records)', function () { return !!window.indexedDB; });
+  test('localStorage', function () { localStorage.setItem('_t', '1'); localStorage.removeItem('_t'); return true; });
+  test('<dialog> element', function () { var d = document.createElement('dialog'); return typeof d.showModal === 'function'; });
+  test('createImageBitmap', function () { return 'createImageBitmap' in window; });
+  test('Barcode reader (BarcodeDetector)', function () { return 'BarcodeDetector' in window; });
+  test('Web Share (send PDF)', function () { return !!navigator.share; });
+  test('CSS flex gap', function () { return CSS.supports && CSS.supports('gap', '1px'); });
+  test('CSS aspect-ratio', function () { return CSS.supports && CSS.supports('aspect-ratio', '1 / 1'); });
+  add('Installed as app (standalone)', true, (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ? 'yes' : 'no (opened in the browser)');
+  add('Page address', true, location.href);
+  add('Memory (GB, approx)', true, navigator.deviceMemory ? String(navigator.deviceMemory) : 'unknown');
+  add('Screen', true, screen.width + 'x' + screen.height + ' @' + (window.devicePixelRatio || 1));
+
+  var t = document.getElementById('t'), bad = 0, html = '';
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i]; if (!r.ok) bad++;
+    html += '<tr><td>' + String(r.name).replace(/</g, '&lt;') + '</td><td class="' + (r.ok ? 'ok' : 'bad') + '">' + (r.ok ? 'OK' : 'NO') + '</td><td>' + String(r.note).replace(/</g, '&lt;') + '</td></tr>';
+  }
+  t.innerHTML = html;
+  document.getElementById('summary').textContent = bad ? bad + ' item(s) this device cannot do (marked NO). Report sent to the server.' : 'Everything needed is supported. Report sent to the server.';
+  try {
+    var x = new XMLHttpRequest(); x.open('POST', 'api/diag', true); x.setRequestHeader('Content-Type', 'application/json');
+    x.onload = function () { document.getElementById('sent').textContent = x.status === 200 ? 'Report sent at ' + new Date().toLocaleTimeString() + '.' : 'Could not send the report (' + x.status + ').'; };
+    x.onerror = function () { document.getElementById('sent').textContent = 'Could not send the report (no connection).'; };
+    x.send(JSON.stringify({ rows: rows, at: new Date().toISOString() }));
+  } catch (e) { document.getElementById('sent').textContent = 'Could not send the report: ' + e; }
+})();
+</script>
+</body>
+</html>
